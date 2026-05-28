@@ -1,0 +1,13 @@
+# OS / editor
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Secrets (never commit anything looking like a token / password)
+*.token
+*.secret
+.env
