@@ -3,9 +3,16 @@
 #  create-win11-vm.sh — Création d'une VM Windows 11 fonctionnelle sur
 #                       Proxmox VE 9 en environnement nested Hyper-V
 #
-#  Différences avec l'atelier standard :
+#  Différences avec l'atelier standard (config validée nested-in-Hyper-V) :
 #    • BIOS SeaBIOS (pas OVMF — OVMF est cassé en nested Hyper-V)
 #    • Pas d'EFI Disk, pas de TPM (inutiles sans OVMF)
+#    • Machine pc-i440fx-9.0 (PAS q35 — Q35 v11 bug APIC en nested)
+#    • ostype=other (PAS win11 — les enlightenments hv_* auto-injectés par
+#      Proxmox pour win11 entrent en conflit avec Hyper-V L0 et font freezer
+#      l'init HAL Windows à ~803 Mo de RAM / 605 Mo lus depuis l'ISO)
+#    • vga=vmware (PAS std — std freeze l'init graphique Win11 nested)
+#    • cpu=x86-64-v2-AES (PAS host — masque vmx, évite tentatives VBS/HVCI)
+#    • Disque cache=none sans iothread (writeback nested LVM-thin = I/O stalls)
 #    • Bypass TPM/SecureBoot à l'install via reg add (cf. doc)
 #
 #  (c) 2026 Ayi NEDJIMI Consultants
@@ -21,10 +28,10 @@ set -euo pipefail
 : "${ISO_STORAGE:=local}"
 : "${DISK_STORAGE:=local-lvm}"
 : "${DISK_SIZE:=64}"
-: "${CORES:=4}"
+: "${CORES:=2}"
 : "${SOCKETS:=1}"
-: "${CPU_TYPE:=host}"
-: "${MEMORY:=4096}"
+: "${CPU_TYPE:=x86-64-v2-AES}"
+: "${MEMORY:=6144}"
 : "${BRIDGE:=vmbr0}"
 
 # ---------- Couleurs ----------
@@ -103,22 +110,22 @@ ok "ISO Windows présente : ${WIN_ISO}"
 step "4. Création VM ${VMID}"
 qm create "${VMID}" \
     --name        "${NAME}" \
-    --ostype      win11 \
+    --ostype      other \
     --bios        seabios \
-    --machine     q35 \
+    --machine     pc-i440fx-9.0 \
     --cores       "${CORES}" \
     --sockets     "${SOCKETS}" \
     --cpu         "${CPU_TYPE}" \
     --memory      "${MEMORY}" \
     --balloon     0 \
     --scsihw      virtio-scsi-single \
-    --scsi0       "${DISK_STORAGE}:${DISK_SIZE},cache=writeback,discard=on,iothread=1,ssd=1" \
+    --scsi0       "${DISK_STORAGE}:${DISK_SIZE},cache=none,discard=on,ssd=1" \
     --ide0        "${ISO_STORAGE}:iso/${WIN_ISO},media=cdrom" \
     --ide1        "${ISO_STORAGE}:iso/${VIRTIO_ISO},media=cdrom" \
     --net0        "virtio,bridge=${BRIDGE},firewall=1" \
     --agent       enabled=1 \
     --tablet      1 \
-    --vga         std \
+    --vga         vmware \
     --boot        'order=ide0;scsi0;net0' \
     --tags        "windows;win11;auto-created" \
     >/dev/null
@@ -132,3 +139,4 @@ ok "VM ${VMID} démarrée"
 echo
 echo "${C_BLD}Ouvre la console et presse ESPACE rapidement pour booter sur le CD :${C_RST}"
 echo "  https://${NODE}:8006  →  VM ${VMID}  →  Console"
+
